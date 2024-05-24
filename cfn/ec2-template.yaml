@@ -1,0 +1,135 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Deploy an EC2 instance with Docker, configured to pull and run a specified GitHub repository.
+
+Parameters:
+  SecurityGroupId:
+    Type: String
+    Description: Security group for the EC2 instance.
+  SubnetId:
+    Type: String
+    Description: Subnet ID for the EC2 instance.
+  GitHubRepo:
+    Type: String
+    Default: 'https://github.com/ItzCrazyKns/Perplexica'
+    Description: GitHub repository URL for Docker Compose setup.
+  AMIID:
+    Type: String
+    Description: AMI ID for the EC2 instance. This can be set dynamically during stack creation.
+  IAMInstanceProfile:
+    Type: String
+    Description: IAM profile ARN for the EC2 instance. Needed to provide access to SSM and other AWS services.
+  ResourcePrefix:
+    Type: String
+    Description: Prefix used for resource naming
+    Default: 'perplexica'
+
+Resources:
+  MyInstance:
+    Type: AWS::EC2::Instance
+    Properties:
+      InstanceType: t3.micro
+      ImageId: !Ref AMIID
+      IamInstanceProfile: !Ref IAMInstanceProfile
+      SubnetId: !Ref SubnetId
+      SecurityGroupIds:
+        - !Ref SecurityGroupId
+      Tags:
+        - Key: Name
+          Value: !Sub "${ResourcePrefix}-instance"
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          yum update -y
+          yum install -y docker aws-cli git docker-compose
+          service docker start
+          usermod -a -G docker ec2-user
+
+          # Ensure AWS CLI region is configured
+          aws configure set default.region ${AWS::Region}
+
+          # Enable IP forwarding and setup iptables for port forwarding
+          #echo 1 > /proc/sys/net/ipv4/ip_forward
+          #iptables -t nat -A PREROUTING -p tcp --dport 31337 -j DNAT --to-destination 127.0.0.1:31337
+          #iptables -t nat -A PREROUTING -p tcp --dport 31338 -j DNAT --to-destination 127.0.0.1:31338
+          #iptables -t nat -A PREROUTING -p tcp --dport 31339 -j DNAT --to-destination 127.0.0.1:31339
+          #iptables -t nat -A POSTROUTING -j MASQUERADE
+
+          # Retrieve API Key from SSM Parameter Store
+          OPENAI_API_KEY=$(aws ssm get-parameter --name "/config/openai/apikey" --with-decryption --query "Parameter.Value" --output text)
+
+          # Set up the GitHub repository
+          cd /home/ec2-user
+          if git clone ${GitHubRepo} app; then
+            cd app
+            # Create config.toml before starting Docker Compose
+            cat <<EOF >./config.toml
+            [GENERAL]
+            PORT = 31338 # Port to run the server on
+            SIMILARITY_MEASURE = "cosine" # "cosine" or "dot"
+            CHAT_MODEL_PROVIDER = "openai" # "openai" or "ollama"
+            CHAT_MODEL = "gpt-3.5-turbo" # Name of the model to use
+
+            [API_KEYS]
+            OPENAI = "$OPENAI_API_KEY"
+
+            [API_ENDPOINTS]
+            SEARXNG = "http://localhost:31337" # SearxNG API URL
+            OLLAMA = "" # Ollama API URL - http://host.docker.internal:11434
+            EOF
+
+            CAT <<EOF >./elasticsearch.conf
+            - name: elasticsearch
+              shortcut: es
+              engine: elasticsearch
+              base_url: http://localhost:9200
+              username: elastic
+              password: changeme
+              index: my-index
+              query_type: match
+              # custom_query_json: '{ ... }'
+              enable_http: true
+            EOF
+
+            CAT <<EOF >./find.conf
+            - name: find
+              engine: command
+              command: ['find', '.', '-name', '{{QUERY}}']
+              query_type: path
+              shortcut: fnd
+              delimiter:
+                  chars: ' '
+                  keys: ['line']
+            EOF
+
+            CAT <<EOF >./mediawiki.conf
+            - name: mw
+              engine: mediawiki
+              base_url: https://localhost/
+              search_type: 'nearmatch'
+            EOF
+
+            # Start Docker Compose
+            docker-compose up --build -d
+
+            # Wait for services to initialize
+            sleep 120
+
+            # Output Docker Compose logs
+            docker-compose logs
+          else
+            echo "Failed to clone GitHub repository."
+            exit 1
+          fi
+
+Outputs:
+  InstancePublicIP:
+    Description: Public IP of the EC2 instance.
+    Value: !GetAtt MyInstance.PublicIp
+
+  InstanceFQDN:
+    Description: Public DNS (FQDN) of the EC2 instance.
+    Value: !GetAtt MyInstance.PublicDnsName
+
+  InstanceId:
+    Description: EC2 instance ID
+    Value: !Ref MyInstance

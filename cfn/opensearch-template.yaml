@@ -1,0 +1,102 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: OpenSearch CloudFormation Template
+
+Parameters:
+  VPCId:
+    Type: String
+    Description: VPC ID for OpenSearch
+  SubnetId:
+    Type: String
+    Description: Subnet ID for OpenSearch
+  ResourcePrefix:
+    Type: String
+    Description: Prefix used for resource naming
+  SearchSlowLogsLogGroupArn:
+    Type: String
+    Description: ARN of the Search Slow Logs CloudWatch Log Group
+  IndexSlowLogsLogGroupArn:
+    Type: String
+    Description: ARN of the Index Slow Logs CloudWatch Log Group
+
+Resources:
+  OpenSearchServiceRole:
+    Type: "AWS::IAM::Role"
+    Properties:
+      Path: "/"
+      RoleName: !Sub "${ResourcePrefix}-OpenSearchServiceRole"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Action: "sts:AssumeRole"
+            Effect: "Allow"
+            Principal:
+              Service: "opensearchservice.amazonaws.com"
+      Policies:
+        - PolicyName: "OpenSearchServicePolicy"
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: "Allow"
+                Action:
+                  - "logs:CreateLogStream"
+                  - "logs:PutLogEvents"
+                  - "logs:CreateLogGroup"
+                Resource: 
+                  - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/aes/domains/${ResourcePrefix}-os-domain/search-slow-logs:*"
+                  - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/aes/domains/${ResourcePrefix}-os-domain/index-slow-logs:*"
+
+  OpenSearchDomainSecurityGroup:
+    Type: "AWS::EC2::SecurityGroup"
+    Properties:
+      GroupDescription: "Security group for OpenSearch domain"
+      VpcId: !Ref VPCId
+      SecurityGroupIngress:
+        - CidrIp: "0.0.0.0/0"
+          FromPort: 443
+          ToPort: 443
+          IpProtocol: "tcp"
+      Tags:
+        - Key: "Name"
+          Value: !Sub "${ResourcePrefix}-OpenSearch-Security-Group"
+
+  OpenSearchDomain:
+    Type: "AWS::OpenSearchService::Domain"
+    DependsOn:
+      - OpenSearchDomainSecurityGroup
+      - OpenSearchServiceRole
+    Properties:
+      DomainName: !Sub "${ResourcePrefix}-os-domain"
+      EngineVersion: "OpenSearch_2.3"
+      ClusterConfig:
+        InstanceType: "t3.small.search"
+        InstanceCount: 1
+      EBSOptions:
+        EBSEnabled: true
+        VolumeSize: 10
+        VolumeType: "gp2"
+      VPCOptions:
+        SecurityGroupIds:
+          - !Ref OpenSearchDomainSecurityGroup
+        SubnetIds:
+          - !Ref SubnetId
+      AccessPolicies:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: "Allow"
+            Principal:
+              AWS: "*"
+            Action: "es:ESHttp*"
+            Resource: !Sub "arn:aws:es:${AWS::Region}:${AWS::AccountId}:domain/${ResourcePrefix}-os-domain/*"
+      LogPublishingOptions:
+        SEARCH_SLOW_LOGS:
+          CloudWatchLogsLogGroupArn: !Ref SearchSlowLogsLogGroupArn
+          Enabled: true
+        INDEX_SLOW_LOGS:
+          CloudWatchLogsLogGroupArn: !Ref IndexSlowLogsLogGroupArn
+          Enabled: true
+
+Outputs:
+  OpenSearchDomainEndpoint:
+    Description: OpenSearch Domain Endpoint
+    Value: !GetAtt OpenSearchDomain.DomainEndpoint
+

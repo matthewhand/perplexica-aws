@@ -1,0 +1,53 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: OpenSearch environment with conditional log group creation.
+
+Parameters:
+  ResourcePrefix:
+    Type: String
+    Description: Prefix used for naming resources, to ensure uniqueness.
+  SearchSlowLogsLogGroupArn:
+    Type: String
+    Default: ''
+    Description: Optionally provide an existing ARN for the search slow logs.
+  IndexSlowLogsLogGroupArn:
+    Type: String
+    Default: ''
+    Description: Optionally provide an existing ARN for the index slow logs.
+
+Conditions:
+  CreateNewLogGroups: !And
+    - !Equals [ !Ref SearchSlowLogsLogGroupArn, '' ]
+    - !Equals [ !Ref IndexSlowLogsLogGroupArn, '' ]
+
+Resources:
+  SearchSlowLogsLogGroup:
+    Type: 'AWS::Logs::LogGroup'
+    Condition: CreateNewLogGroups
+    Properties:
+      LogGroupName: !Sub "/aws/aes/domains/${ResourcePrefix}-os-domain/search-slow-logs"
+      RetentionInDays: 14
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+
+  IndexSlowLogsLogGroup:
+    Type: 'AWS::Logs::LogGroup'
+    Condition: CreateNewLogGroups
+    Properties:
+      LogGroupName: !Sub "/aws/aes/domains/${ResourcePrefix}-os-domain/index-slow-logs"
+      RetentionInDays: 14
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+
+Outputs:
+  SearchSlowLogsLogGroupArnOutput:
+    Description: The ARN of the Search Slow Logs Log Group.
+    Value: !GetAtt SearchSlowLogsLogGroup.Arn
+    Export:
+      Name: !Sub "${ResourcePrefix}-SearchSlowLogsLogGroupArn"
+
+  IndexSlowLogsLogGroupArnOutput:
+    Description: The ARN of the Index Slow Logs Log Group.
+    Value: !GetAtt IndexSlowLogsLogGroup.Arn
+    Export:
+      Name: !Sub "${ResourcePrefix}-IndexSlowLogsLogGroupArn"
+

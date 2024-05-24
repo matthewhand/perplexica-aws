@@ -1,0 +1,79 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Create IAM roles for EC2 and OpenSearch integration.
+
+Parameters:
+  ResourcePrefix:
+    Type: String
+    Description: Prefix used for resource naming
+
+Resources:
+  EC2Role:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+      Path: /
+      Policies:
+        - PolicyName: EC2ComprehensivePolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - ssm:GetParameter
+                  - ssm:DescribeParameters
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                  - logs:CreateLogGroup
+                Resource: '*'
+
+  EC2InstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles:
+        - !Ref EC2Role
+
+  OpenSearchServiceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: opensearchservice.amazonaws.com
+            Action: sts:AssumeRole
+      Path: /
+      Policies:
+        - PolicyName: OpenSearchCloudWatchLogsPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource:
+                  - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/aes/domains/${ResourcePrefix}-os-domain/*"
+
+Outputs:
+  EC2RoleArn:
+    Description: The ARN of the EC2 IAM Role.
+    Value: !GetAtt EC2Role.Arn
+
+  EC2InstanceProfileArn:
+    Description: The ARN of the EC2 IAM Instance Profile.
+    Value: !GetAtt EC2InstanceProfile.Arn
+
+  EC2InstanceProfileName:
+    Description: "The name of the EC2 IAM Instance Profile."
+    Value: !Ref EC2InstanceProfile
+
+  OpenSearchServiceRoleArn:
+    Description: The ARN of the OpenSearch IAM Role.
+    Value: !GetAtt OpenSearchServiceRole.Arn

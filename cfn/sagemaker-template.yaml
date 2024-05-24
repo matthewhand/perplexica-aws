@@ -1,0 +1,33 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Deploy a SageMaker Notebook instance.
+
+Parameters:
+  IAMRole:
+    Type: String
+    Description: IAM Role ARN for SageMaker
+  SubnetId:
+    Type: String
+    Description: Subnet ID for SageMaker
+  SecurityGroupId:
+    Type: String
+    Description: Security Group ID for SageMaker
+
+Resources:
+  SageMakerNotebookInstance:
+    Type: "AWS::SageMaker::NotebookInstance"
+    Properties:
+      InstanceType: "ml.t2.medium"
+      RoleArn: !Ref IAMRole
+      SubnetId: !Ref SubnetId
+      SecurityGroupIds:
+        - !Ref SecurityGroupId
+      NotebookInstanceName: !Sub "${AWS::StackName}-NotebookInstance"
+
+Outputs:
+  NotebookInstanceName:
+    Description: Name of the SageMaker Notebook instance
+    Value: !Ref SageMakerNotebookInstance
+
+  NotebookInstanceURL:
+    Description: URL of the SageMaker Notebook instance
+    Value: !Sub "https://${AWS::Region}.console.aws.amazon.com/sagemaker/home?region=${AWS::Region}#/notebook-instances/${SageMakerNotebookInstance.NotebookInstanceName}"

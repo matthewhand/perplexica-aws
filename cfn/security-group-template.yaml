@@ -1,0 +1,37 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Create a security group for EC2 and OpenSearch instances.
+
+Parameters:
+  VPCId:
+    Type: String
+    Description: The ID of the VPC where the security group will be created.
+
+Resources:
+  MySecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allows HTTP, SSH access, and custom ports.
+      VpcId: !Ref VPCId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0  # SSH access, consider restricting to a specific IP range.
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0  # HTTP access open to the internet.
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0  # HTTP access open to the internet.
+        - IpProtocol: tcp
+          FromPort: 31336
+          ToPort: 31338
+          CidrIp: 0.0.0.0/0  # Custom application ports.
+
+Outputs:
+  SecurityGroupId:
+    Description: The ID of the security group.
+    Value: !Ref MySecurityGroup
+
